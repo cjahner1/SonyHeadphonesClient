@@ -1090,6 +1090,8 @@ namespace
             return MDR_ASSIGNABLE_PLAYBACK;
         case AMBIENT_SOUND_CONTROL:
             return MDR_ASSIGNABLE_NOISE_CONTROL;
+        case VOLUME_CONTROL:
+            return MDR_ASSIGNABLE_VOLUME;
         case AMBIENT_SOUND_CONTROL_QUICK_ACCESS:
             return MDR_ASSIGNABLE_NOISE_CONTROL_QUICK_ACCESS;
         case TRACK_CONTROL:
@@ -1106,6 +1108,18 @@ namespace
             return MDR_ASSIGNABLE_MICROSOFT_CORTANA;
         case QUICK_ACCESS:
             return MDR_ASSIGNABLE_QUICK_ACCESS;
+        case AMBIENT_SOUND_CONTROL_MIC:
+            return MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_MIC;
+        case LISTENING_MODE_QUICK_ACCESS:
+            return MDR_ASSIGNABLE_LISTENING_MODE_QUICK_ACCESS;
+        case AMBIENT_SOUND_CONTROL_LISTENING_MODE:
+            return MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_LISTENING_MODE;
+        case CHAT_MIX:
+            return MDR_ASSIGNABLE_CHAT_MIX;
+        case CUSTOM1:
+            return MDR_ASSIGNABLE_CUSTOM1;
+        case CUSTOM2:
+            return MDR_ASSIGNABLE_CUSTOM2;
         default:
             return MDR_ASSIGNABLE_NONE;
         }
@@ -1119,6 +1133,7 @@ namespace
         case MDR_ASSIGNABLE_NONE: out = NO_FUNCTION; return true;
         case MDR_ASSIGNABLE_PLAYBACK: out = PLAYBACK_CONTROL; return true;
         case MDR_ASSIGNABLE_NOISE_CONTROL: out = AMBIENT_SOUND_CONTROL; return true;
+        case MDR_ASSIGNABLE_VOLUME: out = VOLUME_CONTROL; return true;
         case MDR_ASSIGNABLE_NOISE_CONTROL_QUICK_ACCESS: out = AMBIENT_SOUND_CONTROL_QUICK_ACCESS; return true;
         case MDR_ASSIGNABLE_TRACK_CONTROL: out = TRACK_CONTROL; return true;
         case MDR_ASSIGNABLE_VOICE_RECOGNITION: out = VOICE_RECOGNITION; return true;
@@ -1127,6 +1142,12 @@ namespace
         case MDR_ASSIGNABLE_TENCENT_XIAOWEI: out = TENCENT_XIAOWEI; return true;
         case MDR_ASSIGNABLE_MICROSOFT_CORTANA: out = MS; return true;
         case MDR_ASSIGNABLE_QUICK_ACCESS: out = QUICK_ACCESS; return true;
+        case MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_MIC: out = AMBIENT_SOUND_CONTROL_MIC; return true;
+        case MDR_ASSIGNABLE_LISTENING_MODE_QUICK_ACCESS: out = LISTENING_MODE_QUICK_ACCESS; return true;
+        case MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_LISTENING_MODE: out = AMBIENT_SOUND_CONTROL_LISTENING_MODE; return true;
+        case MDR_ASSIGNABLE_CHAT_MIX: out = CHAT_MIX; return true;
+        case MDR_ASSIGNABLE_CUSTOM1: out = CUSTOM1; return true;
+        case MDR_ASSIGNABLE_CUSTOM2: out = CUSTOM2; return true;
         default: return false;
         }
     }
@@ -2171,7 +2192,37 @@ MDRResult mdrHeadphonesGetAssignableControls(
     auto& h = *Impl(headphones);
     if (!WithDetails(h, [](const auto& state) { return SupportsFeature(state, MDR_FEATURE_ASSIGNABLE_CONTROLS); }))
         return MDR_RESULT_ERROR_NOT_SUPPORTED;
-    // TODO(@amrsatrio): v1 only for now, please work on V2
+    if (h.mProtocolFamily == Headphones::ProtocolFamily::V2)
+    {
+        if (!h.IsReady())
+            return MDR_RESULT_INPROGRESS;
+        constexpr uint32_t required = 2;
+        if (!outControls)
+        {
+            if (*inoutCount != 0)
+                return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+            *inoutCount = required;
+            return MDR_RESULT_OK;
+        }
+        if (*inoutCount < required)
+        {
+            *inoutCount = required;
+            return MDR_RESULT_ERROR_BUFFER_TOO_SMALL;
+        }
+        const auto& state = h.mDetailsV2;
+        outControls[0] = {
+            .location = MDR_ASSIGNABLE_ACTION_KEY_LEFT,
+            .type = MDR_ASSIGNABLE_ACTION_KEY_TYPE_TOUCH_SENSOR,
+            .action = from_protocol(state.mTouchFunctionLeft.current)
+        };
+        outControls[1] = {
+            .location = MDR_ASSIGNABLE_ACTION_KEY_RIGHT,
+            .type = MDR_ASSIGNABLE_ACTION_KEY_TYPE_TOUCH_SENSOR,
+            .action = from_protocol(state.mTouchFunctionRight.current)
+        };
+        *inoutCount = required;
+        return MDR_RESULT_OK;
+    }
     if (h.mProtocolFamily != Headphones::ProtocolFamily::V1)
         return MDR_RESULT_ERROR_NOT_SUPPORTED;
     auto& state = h.mDetailsV1;
@@ -2256,7 +2307,35 @@ MDRResult mdrHeadphonesSetAssignableControls(
         return MDR_RESULT_INPROGRESS;
     if (!WithDetails(h, [](const auto& state) { return SupportsFeature(state, MDR_FEATURE_ASSIGNABLE_CONTROLS); }))
         return MDR_RESULT_ERROR_NOT_SUPPORTED;
-    // TODO(@amrsatrio): v1 only for now, please work on V2
+    if (h.mProtocolFamily == Headphones::ProtocolFamily::V2)
+    {
+        /* V2 reports a fixed left/right pair rather than a per-key capability
+         * table. Require both sides explicitly so an unknown or stale UI can
+         * never overwrite the other ear with a default value. */
+        if (count != 2)
+            return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+        const MDRAssignableControl* left = nullptr;
+        const MDRAssignableControl* right = nullptr;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            if (controls[i].type != MDR_ASSIGNABLE_ACTION_KEY_TYPE_TOUCH_SENSOR)
+                return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+            if (controls[i].location == MDR_ASSIGNABLE_ACTION_KEY_LEFT && !left)
+                left = &controls[i];
+            else if (controls[i].location == MDR_ASSIGNABLE_ACTION_KEY_RIGHT && !right)
+                right = &controls[i];
+            else
+                return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+        }
+        if (!left || !right)
+            return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+        mdr::v2::t1::Preset leftPreset, rightPreset;
+        if (!to_protocol(left->action, leftPreset) || !to_protocol(right->action, rightPreset))
+            return MDR_RESULT_ERROR_INVALID_ARGUMENT;
+        h.mDetailsV2.mTouchFunctionLeft.stage(leftPreset);
+        h.mDetailsV2.mTouchFunctionRight.stage(rightPreset);
+        return MDR_RESULT_OK;
+    }
     if (h.mProtocolFamily != Headphones::ProtocolFamily::V1)
         return MDR_RESULT_ERROR_NOT_SUPPORTED;
     auto& state = h.mDetailsV1;

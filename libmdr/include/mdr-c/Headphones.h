@@ -269,6 +269,15 @@ typedef uint32_t MDRAssignableAction;
 #define MDR_ASSIGNABLE_TENCENT_XIAOWEI ((MDRAssignableAction)8u)
 #define MDR_ASSIGNABLE_MICROSOFT_CORTANA ((MDRAssignableAction)9u)
 #define MDR_ASSIGNABLE_QUICK_ACCESS ((MDRAssignableAction)10u)
+/* V2 touch-sensor presets. These are exposed separately because recent WF
+ * models (including WF-1000XM6) can assign them to either ear. */
+#define MDR_ASSIGNABLE_VOLUME ((MDRAssignableAction)11u)
+#define MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_MIC ((MDRAssignableAction)12u)
+#define MDR_ASSIGNABLE_LISTENING_MODE_QUICK_ACCESS ((MDRAssignableAction)13u)
+#define MDR_ASSIGNABLE_AMBIENT_SOUND_CONTROL_LISTENING_MODE ((MDRAssignableAction)14u)
+#define MDR_ASSIGNABLE_CHAT_MIX ((MDRAssignableAction)15u)
+#define MDR_ASSIGNABLE_CUSTOM1 ((MDRAssignableAction)16u)
+#define MDR_ASSIGNABLE_CUSTOM2 ((MDRAssignableAction)17u)
 
 typedef uint32_t MDRWearingPowerMode;
 #define MDR_WEARING_POWER_UNAVAILABLE ((MDRWearingPowerMode)0u)
